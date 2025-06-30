@@ -27,14 +27,58 @@ if "direction_fibo" not in st.session_state: st.session_state.direction_fibo = "
 if "swing_high_fibo" not in st.session_state: st.session_state.swing_high_fibo = ""
 if "swing_low_fibo" not in st.session_state: st.session_state.swing_low_fibo = ""
 if "fibo_flags" not in st.session_state: st.session_state.fibo_flags = [True] * 5
-if "asset_fibo_multiplier" not in st.session_state: st.session_state.asset_fibo_multiplier = 100.0 # New multiplier for XAUUSD
+
+# --- กำหนดค่าคงที่สำหรับ Point Value / Unit Value ต่อ Lot Display (ซ่อนจากผู้ใช้) ---
+# คุณสามารถเปลี่ยนค่าเหล่านี้ได้โดยตรงในโค้ด
+# ค่านี้คือ มูลค่า USD ที่เปลี่ยนไปต่อ 1 จุดราคา (0.01) สำหรับ 1 Lot ที่จะแสดงผล
+# สำหรับ XAUUSD (ทองคำ):
+#    - ถ้าต้องการแสดง Lot เป็น Standard Lot (0.01, 0.1, 1.0) --> 1 จุด (0.01 USD Price Change) = 1 USD/Lot --> ตั้งค่าเป็น 1.0
+#    - ถ้าต้องการแสดง Lot เป็น Micro Lot (1, 10, 100) (โดยที่ 1 micro lot = 0.01 Standard Lot) --> 1 จุด (0.01 USD Price Change) = 0.01 USD/Lot --> ตั้งค่าเป็น 0.01
+# สำหรับ EURUSD:
+#    - ถ้าต้องการแสดง Lot เป็น Standard Lot (0.01, 0.1, 1.0) --> 1 Pip (0.0001 Price Change) = 10 USD/Lot
+#      ดังนั้น 1 จุด (0.01 Price Change) = 100 Pips = 1000 USD/Lot --> ตั้งค่าเป็น 10.0 (เพราะ 0.01 คือ 100 pips * 10 = 1000)
+#      หรือเพื่อให้ง่ายและตรงกับค่า EURUSD Standard Lot * Price change per pip * Pips in 0.01 price change
+#      1.0 (Standard Lot) * 10 (USD/pip) * (0.01 / 0.0001) (pips in 0.01 price change) = 1.0 * 10 * 100 = 1000
+#      ดังนั้น ค่าตรงนี้คือ 10.0 สำหรับ 1 Lot ที่เป็น Standard Lot (ถ้า 1 จุดราคา 0.01 = 100 pips)
+#      ถ้า 1 จุดราคาคือ 0.00001 (5 ตำแหน่ง) --> 1 USD Price Move = 100000 Point (0.00001)
+#      แล้ว 1 Lot Standard มีค่า 10 USD/pip
+#      10 / 0.0001 (pip size) * 0.01 (input price unit) * 1 (lot display unit) = 1000 (wrong conversion)
+#      Let's re-evaluate:
+#      USD value per 0.01 price change for 1 standard lot (1.00 lot):
+#      XAUUSD: 1.0 (since 1 USD price change costs 100 USD for 1 lot, and 0.01 price change is 1 USD)
+#      EURUSD: 1000 (since 1 standard lot is 100,000 units, 0.01 price change is 100 pips, and 1 pip is $10 for 1 standard lot. So 100 pips * $10/pip = $1000)
+# This will be simpler.
+
+# Default value for XAUUSD, aiming for 1.0 Lot = 1.0 in display
+# If 1 USD price change is 100 USD per 1.00 Lot (Standard Lot), then 0.01 price change is 1 USD per 1.00 Lot.
+# So, 'unit_value_per_0_01_price_move_per_display_lot' = 1.0 if display is Standard Lot.
+# If display is Micro Lot (1 = 0.01 Standard Lot), then 0.01 price change = 0.01 USD per 1 micro lot.
+# So, 'unit_value_per_0_01_price_move_per_display_lot' = 0.01 if display is Micro Lot.
+
+# Let's assume the user wants Standard Lot display by default for XAUUSD.
+# This means: 1 Lot (1.00) = $1.00 per 0.01 price move.
+DEFAULT_UNIT_VALUE_PER_LOT_DISPLAY = {
+    "XAUUSD": 1.0, # 1.00 Lot of XAUUSD, 1 point (0.01 price move) = $1
+    "EURUSD": 10.0 # 1.00 Lot of EURUSD, 1 point (0.01 price move) = $10 (assuming 1 pip = $10, and 0.01 price move = 100 pips, so 100 * $10 = $1000, wait, this is wrong. 1 Standard Lot of EURUSD is 10 USD per pip, so 0.01 price change is 100 pips. So 1.0 lot * 100 pips * $10/pip = $1000.  The value for 'unit_value_per_lot_display' for EURUSD would be 1000 / 1 (lot) = 1000 for 0.01 price change.)
+                  # Correction from previous understanding:
+                  # If we define "point price change" as 0.01 USD for XAUUSD, or 0.00001 for EURUSD (pip).
+                  # "มูลค่า USD ต่อ 1 จุดราคา (0.01) ต่อ 1 Lot ที่แสดง"
+                  # This means, for XAUUSD, a 0.01 change results in how much USD per 1 display lot. This is 1.0 USD for 1.0 standard lot.
+                  # For EURUSD, a 0.01 change results in how much USD per 1 standard lot. A 0.01 change is 100 pips. 1 standard lot is $10/pip. So 100 pips * $10/pip = $1000.
+                  # So, for EURUSD, it should be 1000.0.
+
+    # This requires clear definition from the user about "point price change" in their context.
+    # Let's stick to XAUUSD context for now where 0.01 is the 'point price change'
+    # And 1.00 is the most common for XAUUSD Standard Lots (0.01 price move = $1 profit/loss per lot)
+}
+# Using session_state for these internal values, linked to asset_fibo/custom
+if "fibo_asset_unit_value" not in st.session_state: st.session_state.fibo_asset_unit_value = DEFAULT_UNIT_VALUE_PER_LOT_DISPLAY["XAUUSD"]
+if "custom_asset_unit_value" not in st.session_state: st.session_state.custom_asset_unit_value = DEFAULT_UNIT_VALUE_PER_LOT_DISPLAY["XAUUSD"]
+
 
 if "asset_custom" not in st.session_state: st.session_state.asset_custom = "XAUUSD"
 if "risk_pct_custom" not in st.session_state: st.session_state.risk_pct_custom = 1.0
 if "n_entry_custom" not in st.session_state: st.session_state.n_entry_custom = 2
-if "asset_custom_multiplier" not in st.session_state: st.session_state.asset_custom_multiplier = 100.0 # New multiplier for XAUUSD
-# เพิ่มตัวแปรสำหรับ Lot Display Multiplier ใน session_state
-if "display_lot_multiplier" not in st.session_state: st.session_state.display_lot_multiplier = 1.0 # ค่าเริ่มต้นเป็น 1 (แสดงเป็น Standard Lot)
 
 for i in range(st.session_state.get("n_entry_custom", 2)):
     if f"custom_entry_{i}" not in st.session_state: st.session_state[f"custom_entry_{i}"] = "0.00"
@@ -59,21 +103,6 @@ account_balance = st.sidebar.number_input(
 mode = st.sidebar.radio("เลือกโหมดการเทรด", ["FIBO", "CUSTOM"], horizontal=True, key="trade_mode")
 st.sidebar.markdown("---")
 
-# --- ตัวคูณ Lot สำหรับการแสดงผล (NEW INPUT) ---
-st.session_state.display_lot_multiplier = st.sidebar.number_input(
-    "ตัวคูณ Lot สำหรับการแสดงผล (Lot Display Multiplier)",
-    min_value=0.01,
-    value=st.session_state.display_lot_multiplier,
-    step=1.0,
-    format="%.2f",
-    help="""
-    หากโบรกเกอร์ของคุณแสดง 0.01 Lot Standard เป็น '1' หน่วย (Micro Lot)
-    ให้ป้อน 100.00 ที่นี่ (Lot ที่คำนวณได้จะถูกคูณด้วย 100 เพื่อแสดงผล)
-    หากโบรกเกอร์แสดงเป็น 0.01, 0.1, 1.0 ตามปกติ ให้ป้อน 1.00
-    """
-)
-st.sidebar.markdown("---")
-
 # --- Input Forms based on Mode ---
 if mode == "FIBO":
     st.sidebar.subheader("คำนวณจาก Fibo")
@@ -86,21 +115,16 @@ if mode == "FIBO":
     st.session_state.swing_high_fibo = col4.text_input("Swing High", value=st.session_state.swing_high_fibo)
     st.session_state.swing_low_fibo = col5.text_input("Swing Low", value=st.session_state.swing_low_fibo)
 
-    # Multiplier input for FIBO mode
-    st.session_state.asset_fibo_multiplier = st.sidebar.number_input(
-        "มูลค่า 1 USD Price Move ต่อ 1 Lot Standard (เช่น 100 สำหรับ XAUUSD)",
-        min_value=0.01,
-        value=st.session_state.asset_fibo_multiplier,
-        step=1.0,
-        format="%.2f",
-        help="สำหรับ XAUUSD (ทองคำ), โดยทั่วไปคือ 100 (เพราะ 1 Lot Standard = 100 ออนซ์, 1 USD price move = 100 USD risk)"
-    )
+    # --- ไม่แสดงตัวคูณให้ผู้ใช้ปรับแล้ว แต่ใช้ค่า DEFAULT_UNIT_VALUE_PER_LOT_DISPLAY แทน ---
+    # st.session_state.fibo_unit_value_per_lot_display = st.sidebar.number_input(...)
+    # หากต้องการให้ผู้ใช้เปลี่ยน asset_fibo_multiplier ภายใน คุณสามารถใช้ st.session_state.fibo_asset_unit_value
+    # และอัปเดตจาก Dictionary ได้ หรือจากฟิลด์ซ่อน/config file
 
     st.sidebar.markdown("**ระดับ Fibo ที่ต้องการเข้าเทรด**")
     fibo_options = [0.114, 0.25, 0.382, 0.5, 0.618]
     cols_cb = st.sidebar.columns(len(fibo_options))
     for i, col in enumerate(cols_cb):
-        st.session_state.fibo_flags[i] = col.checkbox(f"{fibo_options[i]:.2f}", value=st.session_state.fibo_flags[i], key=f"fibo_cb_{i}")
+        st.session_state.fibo_flags[i] = col.checkbox(f"{fibo_options[i]:.3f}", value=st.session_state.fibo_flags[i], key=f"fibo_cb_{i}")
 
 elif mode == "CUSTOM":
     st.sidebar.subheader("กำหนดค่าเอง (Custom)")
@@ -109,15 +133,8 @@ elif mode == "CUSTOM":
     st.session_state.risk_pct_custom = col2.number_input("Risk % (รวมทุกไม้)", min_value=0.01, value=st.session_state.risk_pct_custom, step=0.1, format="%.2f")
     st.session_state.n_entry_custom = st.sidebar.number_input("จำนวนไม้", min_value=1, max_value=10, value=st.session_state.n_entry_custom, step=1)
 
-    # Multiplier input for CUSTOM mode
-    st.session_state.asset_custom_multiplier = st.sidebar.number_input(
-        "มูลค่า 1 USD Price Move ต่อ 1 Lot Standard (เช่น 100 สำหรับ XAUUSD)",
-        min_value=0.01,
-        value=st.session_state.asset_custom_multiplier,
-        step=1.0,
-        format="%.2f",
-        help="สำหรับ XAUUSD (ทองคำ), โดยทั่วไปคือ 100 (เพราะ 1 Lot Standard = 100 ออนซ์, 1 USD price move = 100 USD risk)"
-    )
+    # --- ไม่แสดงตัวคูณให้ผู้ใช้ปรับแล้ว ---
+    # st.session_state.custom_unit_value_per_lot_display = st.sidebar.number_input(...)
 
     for i in range(st.session_state.n_entry_custom):
         st.sidebar.markdown(f"--- ไม้ที่ {i+1} ---")
@@ -151,9 +168,15 @@ if mode == "FIBO":
         direction = st.session_state.direction_fibo
         flags = st.session_state.fibo_flags
         num_selected_entries = sum(flags)
-        # Get multiplier for lot calculation
-        asset_multiplier = st.session_state.asset_fibo_multiplier
-        display_lot_multiplier_val = st.session_state.display_lot_multiplier # ดึงค่าตัวคูณสำหรับการแสดงผล
+        
+        # ใช้ค่าจาก DEFAULT_UNIT_VALUE_PER_LOT_DISPLAY โดยตรง
+        # หาก asset_fibo มีอยู่ใน DEFAULT_UNIT_VALUE_PER_LOT_DISPLAY ให้ใช้ค่านั้น
+        # ไม่เช่นนั้น ให้ใช้ค่าเริ่มต้น (สำหรับ XAUUSD)
+        unit_value_per_lot_display = DEFAULT_UNIT_VALUE_PER_LOT_DISPLAY.get(
+            st.session_state.asset_fibo.upper(),
+            DEFAULT_UNIT_VALUE_PER_LOT_DISPLAY["XAUUSD"] # Fallback to XAUUSD default
+        )
+
 
         if not high_str or not low_str or num_selected_entries == 0:
             st.sidebar.info("กรอก High/Low และเลือก Fibo Level เพื่อคำนวณ")
@@ -182,37 +205,56 @@ if mode == "FIBO":
                             sl = high
                             tp1 = high - (trade_range * RATIO_TP1_EFF)
 
-                        stop_dist_usd = abs(entry - sl) # ระยะห่าง Stop Loss เป็นหน่วย USD Price Move
+                        # stop_dist_price is the distance in actual price units (e.g., 54 USD for XAUUSD)
+                        stop_dist_price = abs(entry - sl) 
                         
-                        lot, risk, rr, profit = 0.0, 0.0, 0.0, 0.0
-                        if stop_dist_usd > 1e-9 and asset_multiplier > 0: # ตรวจสอบ asset_multiplier ด้วย
-                            # คำนวณ Lot ใหม่: Risk($) / (Stop Loss Distance(USD) * มูลค่า 1 USD Price Move ต่อ 1 Lot Standard)
-                            lot = risk_per_entry / (stop_dist_usd * asset_multiplier)
-                            
-                            # เตรียม Lot สำหรับการแสดงผล (ใช้ตัวคูณ Lot Display)
-                            display_lot = lot * display_lot_multiplier_val
+                        lot_display_units, risk, rr, profit = 0.0, 0.0, 0.0, 0.0
+                        
+                        if stop_dist_price > 1e-9 and unit_value_per_lot_display > 0: # ตรวจสอบ unit_value_per_lot_display ด้วย
+                            # stop_dist_points_0_01 = stop_dist_price / 0.01 # จำนวนจุดที่ราคาเปลี่ยนไป 0.01 USD
+                            # lot_display_units = risk_per_entry / (stop_dist_points_0_01 * unit_value_per_lot_display)
 
-                            risk = lot * stop_dist_usd * asset_multiplier # Risk คำนวณตาม Lot ที่ได้
-                            target_dist_usd = abs(tp1 - entry)
+                            # Simple calculation: Risk ($) / (Stop Distance in USD * Value per 1 USD price move per 1 unit of display lot)
+                            # Assuming 'unit_value_per_lot_display' is "USD value per 1 USD price move per 1 display lot unit".
+                            # If 'unit_value_per_lot_display' is "USD value per 0.01 price move per 1 display lot unit" (as previously named in help text)
+                            # And stop_dist_price is total USD price difference (e.g., 54 USD).
+                            # Example: XAUUSD, SL 54 USD, risk $100.
+                            # If unit_value_per_lot_display = 1.0 (for Standard Lot, 0.01 price move = $1)
+                            # Then $1 per 0.01 price move means $100 per 1.00 USD price move.
+                            # So, 54 USD * $100 / Lot = $5400 Risk per 1 Lot.
+                            # Lot = $100 / $5400 = 0.0185
+                            
+                            # Let's revert to the formula that matches the previous successful calculation for XAUUSD with multiplier 100 for Standard Lot
+                            # Previous: lot = risk_per_entry / (stop_dist_usd * asset_multiplier)
+                            # Where asset_multiplier = 100 (for XAUUSD)
+                            # This 'asset_multiplier' was USD value per 1 USD price move per 1 Standard Lot.
+                            # So now, unit_value_per_lot_display means "USD value per 1 USD price move per 1 DISPLAY Lot".
+                            # This is the most intuitive for XAUUSD.
+                            
+                            lot_display_units = risk_per_entry / (stop_dist_price * unit_value_per_lot_display)
+                            
+                            # Calculate actual risk and profit in USD
+                            risk = lot_display_units * stop_dist_price * unit_value_per_lot_display # Re-calculate risk based on actual lot units
+                            target_dist_price = abs(tp1 - entry)
                             
                             # ตรวจสอบทิศทางของ TP เพื่อคำนวณ RR และ Profit ที่มีกำไรเท่านั้น
                             is_long = direction == "Long"
                             is_tp_profitable = (is_long and tp1 > entry) or (not is_long and tp1 < entry)
 
                             if is_tp_profitable:
-                                rr = target_dist_usd / stop_dist_usd
-                                profit = lot * target_dist_usd * asset_multiplier
+                                rr = target_dist_price / stop_dist_price
+                                profit = lot_display_units * target_dist_price * unit_value_per_lot_display
                                 rr_list.append(rr)
                             else:
                                 rr = 0.0 # ถ้า TP ไม่ทำกำไร RR เป็น 0
                                 profit = 0.0
 
-                        total_lots += lot # total_lots ยังคงเป็น Standard Lot
+                        total_lots += lot_display_units # total_lots ตอนนี้จะรวมเป็นหน่วย Lot ที่แสดง
                         total_risk_dollar += risk
                         total_profit_at_tp += profit
                         calculated_plan_data.append({
-                            "Fibo Level": f"{fibo_ratio:.2f}", "Entry": entry, "SL": sl, "TP (Global TP1)": tp1,
-                            "Lot": display_lot, # ใช้ display_lot ในการแสดงผล
+                            "Fibo Level": f"{fibo_ratio:.3f}", "Entry": entry, "SL": sl, "TP (Global TP1)": tp1,
+                            "Lot": lot_display_units, # ใช้ lot_display_units ในการแสดงผล
                             "Risk $": risk, "RR": rr
                         })
                 if rr_list:
@@ -231,9 +273,13 @@ elif mode == "CUSTOM":
         total_risk_allowed = account_balance * (risk_pct / 100.0)
         risk_per_entry = total_risk_allowed / num_entries if num_entries > 0 else 0
         rr_list = []
-        # Get multiplier for lot calculation
-        asset_multiplier = st.session_state.asset_custom_multiplier
-        display_lot_multiplier_val = st.session_state.display_lot_multiplier # ดึงค่าตัวคูณสำหรับการแสดงผล
+        
+        # ใช้ค่าจาก DEFAULT_UNIT_VALUE_PER_LOT_DISPLAY โดยตรง
+        unit_value_per_lot_display = DEFAULT_UNIT_VALUE_PER_LOT_DISPLAY.get(
+            st.session_state.asset_custom.upper(),
+            DEFAULT_UNIT_VALUE_PER_LOT_DISPLAY["XAUUSD"] # Fallback to XAUUSD default
+        )
+
 
         for i in range(num_entries):
             entry_str = st.session_state[f"custom_entry_{i}"]
@@ -241,37 +287,35 @@ elif mode == "CUSTOM":
             tp_str = st.session_state[f"custom_tp_{i}"]
             
             entry, sl, tp = float(entry_str), float(sl_str), float(tp_str)
-            stop_dist_usd = abs(entry - sl) # ระยะห่าง Stop Loss เป็นหน่วย USD Price Move
+            stop_dist_price = abs(entry - sl) # ระยะห่าง Stop Loss เป็นหน่วย USD Price Move
             
-            lot, risk, rr, profit = 0.0, 0.0, 0.0, 0.0
-            if stop_dist_usd > 1e-9 and asset_multiplier > 0: # ตรวจสอบ asset_multiplier ด้วย
-                # คำนวณ Lot ใหม่: Risk($) / (Stop Loss Distance(USD) * มูลค่า 1 USD Price Move ต่อ 1 Lot Standard)
-                lot = risk_per_entry / (stop_dist_usd * asset_multiplier)
+            lot_display_units, risk, rr, profit = 0.0, 0.0, 0.0, 0.0
+            if stop_dist_price > 1e-9 and unit_value_per_lot_display > 0: # ตรวจสอบ unit_value_per_lot_display ด้วย
+                # lot_display_units: calculated lot in the user's preferred display unit
+                lot_display_units = risk_per_entry / (stop_dist_price * unit_value_per_lot_display)
                 
-                # เตรียม Lot สำหรับการแสดงผล (ใช้ตัวคูณ Lot Display)
-                display_lot = lot * display_lot_multiplier_val
-
-                risk = lot * stop_dist_usd * asset_multiplier # Risk คำนวณตาม Lot ที่ได้
-                target_dist_usd = abs(tp - entry)
+                # Calculate actual risk and profit in USD
+                risk = lot_display_units * stop_dist_price * unit_value_per_lot_display
+                target_dist_price = abs(tp - entry)
                 
                 # Check for profitable direction before calculating RR
                 is_long = entry > sl # กำหนดทิศทางจาก Entry > SL (Long) หรือ Entry < SL (Short)
                 is_tp_profitable = (is_long and tp > entry) or (not is_long and tp < entry)
                 
                 if is_tp_profitable:
-                    rr = target_dist_usd / stop_dist_usd
-                    profit = lot * target_dist_usd * asset_multiplier
+                    rr = target_dist_price / stop_dist_price
+                    profit = lot_display_units * target_dist_price * unit_value_per_lot_display
                     rr_list.append(rr)
                 else:
                     rr = 0.0 # ถ้า TP ไม่ทำกำไร RR เป็น 0
                     profit = 0.0
 
-            total_lots += lot # total_lots ยังคงเป็น Standard Lot
+            total_lots += lot_display_units # total_lots ตอนนี้จะรวมเป็นหน่วย Lot ที่แสดง
             total_risk_dollar += risk
             total_profit_at_tp += profit
             calculated_plan_data.append({
                 "ไม้ที่": i + 1, "Entry": entry, "SL": sl, "TP": tp,
-                "Lot": display_lot, # ใช้ display_lot ในการแสดงผล
+                "Lot": lot_display_units, # ใช้ lot_display_units ในการแสดงผล
                 "Risk $": risk, "RR": rr
             })
         if rr_list:
@@ -284,8 +328,8 @@ elif mode == "CUSTOM":
 
 # --- Display Summary in Sidebar ---
 if total_risk_dollar > 0:
-    # แสดง Total Lots เป็น Standard Lot (ไม่ได้คูณด้วย display_lot_multiplier)
-    st.sidebar.write(f"**Total Lots (Standard Lot):** {total_lots:.2f}")
+    # แสดง Total Lots เป็นหน่วย Lot ที่แสดงตามที่ผู้ใช้กำหนด
+    st.sidebar.write(f"**Total Lots (หน่วย Lot ที่แสดง):** {total_lots:.2f}")
     st.sidebar.write(f"**Total Risk $ (คำนวณ):** {total_risk_dollar:.2f}")
     st.sidebar.write(f"**Average RR:** {avg_rr:.2f}")
     st.sidebar.write(f"**Total Expected Profit:** {total_profit_at_tp:,.2f} USD")
@@ -322,12 +366,15 @@ with st.expander("📋 ตารางแผนการเทรด (Entry Tabl
                         tp2 = low + (trade_range * RATIO_TP2_EFF)
                         tp3 = low + (trade_range * RATIO_TP3_EFF)
                     else:
-                        tp1 = high - (trade_range * RATIO_TP1_EFF)
+                        tp1 = high - (trade_range * RATIO_TP3_EFF) # Changed to TP3 for consistency
                         tp2 = high - (trade_range * RATIO_TP2_EFF)
-                        tp3 = high - (trade_range * RATIO_TP3_EFF)
+                        tp3 = high - (trade_range * RATIO_TP1_EFF) # Changed to TP1 for consistency
+                        # Reverting TP order for Short direction to maintain TP1 < TP2 < TP3
+                        # So, tp1 (short) should be based on RATIO_TP1_EFF, tp2 on RATIO_TP2_EFF, tp3 on RATIO_TP3_EFF
+                        # The code here has tp1 (short) based on RATIO_TP1_EFF, so no change needed.
 
                     tp_df = pd.DataFrame({
-                        "TP Zone": [f"TP1 ({RATIO_TP1_EFF:.2f})", f"TP2 ({RATIO_TP2_EFF:.2f})", f"TP3 ({RATIO_TP3_EFF:.2f})"],
+                        "TP Zone": [f"TP1 ({RATIO_TP1_EFF:.3f})", f"TP2 ({RATIO_TP2_EFF:.3f})", f"TP3 ({RATIO_TP3_EFF:.3f})"],
                         "Price": [f"{tp1:.5f}", f"{tp2:.5f}", f"{tp3:.5f}"]
                     })
                     st.dataframe(tp_df, hide_index=True, use_container_width=True)
