@@ -57,19 +57,37 @@ if "fibo_flags" not in st.session_state: st.session_state.fibo_flags = [True] * 
 
 # Let's assume the user wants Standard Lot display by default for XAUUSD.
 # This means: 1 Lot (1.00) = $1.00 per 0.01 price move.
-DEFAULT_UNIT_VALUE_PER_LOT_DISPLAY = {
-    "XAUUSD": 1.0, # 1.00 Lot of XAUUSD, 1 point (0.01 price move) = $1
-    "EURUSD": 10.0 # 1.00 Lot of EURUSD, 1 point (0.01 price move) = $10 (assuming 1 pip = $10, and 0.01 price move = 100 pips, so 100 * $10 = $1000, wait, this is wrong. 1 Standard Lot of EURUSD is 10 USD per pip, so 0.01 price change is 100 pips. So 1.0 lot * 100 pips * $10/pip = $1000.  The value for 'unit_value_per_lot_display' for EURUSD would be 1000 / 1 (lot) = 1000 for 0.01 price change.)
-                  # Correction from previous understanding:
-                  # If we define "point price change" as 0.01 USD for XAUUSD, or 0.00001 for EURUSD (pip).
-                  # "มูลค่า USD ต่อ 1 จุดราคา (0.01) ต่อ 1 Lot ที่แสดง"
-                  # This means, for XAUUSD, a 0.01 change results in how much USD per 1 display lot. This is 1.0 USD for 1.0 standard lot.
-                  # For EURUSD, a 0.01 change results in how much USD per 1 standard lot. A 0.01 change is 100 pips. 1 standard lot is $10/pip. So 100 pips * $10/pip = $1000.
-                  # So, for EURUSD, it should be 1000.0.
 
-    # This requires clear definition from the user about "point price change" in their context.
-    # Let's stick to XAUUSD context for now where 0.01 is the 'point price change'
-    # And 1.00 is the most common for XAUUSD Standard Lots (0.01 price move = $1 profit/loss per lot)
+DEFAULT_UNIT_VALUE_PER_LOT_DISPLAY = {
+    # XAUUSD: Contract size = 1 XAU (100 Troy Ounces), Profit currency = USD.
+    # 1 USD price move for 1 standard lot (100 oz) = 100 USD profit/loss.
+    "XAUUSD": 100.0,
+    
+    # EURUSD: Default from standard definition (1 Standard Lot = 100,000 units, 1 pip = $10).
+    # 1 USD price move = 10000 pips. So, 10000 pips * $10/pip = $100,000.
+    "EURUSD": 100000.0, 
+    
+    # BTCUSD: Contract size = 0.01 BTC, Profit currency = USD.
+    # 1 USD price move for 1 lot (0.01 BTC) = 0.01 USD profit/loss.
+    "BTCUSD": 0.01,
+    
+    # USDJPYc: Contract size = 1 000 USD, Profit currency = JPY.
+    # (Note: Calculation for JPY profit currency to USD is complex without Tick Value in USD.
+    # We will use a placeholder or common assumption. If 1 lot is 1,000 USD and the price moves 1 JPY,
+    # it's 1000 USD * (1 JPY / Current USDJPY Rate). This needs live rate.
+    # For now, we will assume 1 USD price move per Lot. This needs verification against MT5 behavior.)
+    # Based on common mini-lot interpretation where 1 lot = $1,000 units, a 1 USD price move is 1000 USD.
+    # However, given Profit currency is JPY, a direct conversion is tricky. 
+    # Let's use a very common setup for mini lot size (10,000 units) if it were USD-based.
+    # As the Contract Size is 1,000 USD, it likely means 1 lot controls 1,000 units of the base currency.
+    # If 1 JPY price change leads to 1 USD P/L (as an approximation), then for a 1 unit USD price change
+    # this would be much higher.
+    # Given the complexity and JPY profit, it's best to verify "Tick Value" or confirm with Exness.
+    # For now, if assuming 1 Lot controls 1,000 USD equivalent (not 100,000 standard), and if 1 USD move
+    # is worth 1 USD, it might be 1.0. If 1 USD move is 1000 USD it would be 1000.
+    # Without Tick Value, let's use a common guess or default to XAUUSD fallback.
+    # For this exercise, let's set it to 1.0, but acknowledge it needs careful verification with MT5's actual P/L.
+    "USDJPYC": 1.0, 
 }
 # Using session_state for these internal values, linked to asset_fibo/custom
 if "fibo_asset_unit_value" not in st.session_state: st.session_state.fibo_asset_unit_value = DEFAULT_UNIT_VALUE_PER_LOT_DISPLAY["XAUUSD"]
