@@ -27,10 +27,12 @@ if "direction_fibo" not in st.session_state: st.session_state.direction_fibo = "
 if "swing_high_fibo" not in st.session_state: st.session_state.swing_high_fibo = ""
 if "swing_low_fibo" not in st.session_state: st.session_state.swing_low_fibo = ""
 if "fibo_flags" not in st.session_state: st.session_state.fibo_flags = [True] * 5
+if "asset_fibo_multiplier" not in st.session_state: st.session_state.asset_fibo_multiplier = 100.0 # New multiplier for XAUUSD
 
 if "asset_custom" not in st.session_state: st.session_state.asset_custom = "XAUUSD"
 if "risk_pct_custom" not in st.session_state: st.session_state.risk_pct_custom = 1.0
 if "n_entry_custom" not in st.session_state: st.session_state.n_entry_custom = 2
+if "asset_custom_multiplier" not in st.session_state: st.session_state.asset_custom_multiplier = 100.0 # New multiplier for XAUUSD
 for i in range(st.session_state.get("n_entry_custom", 2)):
     if f"custom_entry_{i}" not in st.session_state: st.session_state[f"custom_entry_{i}"] = "0.00"
     if f"custom_sl_{i}" not in st.session_state: st.session_state[f"custom_sl_{i}"] = "0.00"
@@ -66,6 +68,16 @@ if mode == "FIBO":
     st.session_state.swing_high_fibo = col4.text_input("Swing High", value=st.session_state.swing_high_fibo)
     st.session_state.swing_low_fibo = col5.text_input("Swing Low", value=st.session_state.swing_low_fibo)
 
+    # NEW: Multiplier input for FIBO mode
+    st.session_state.asset_fibo_multiplier = st.sidebar.number_input(
+        "มูลค่า 1 USD Price Move ต่อ 1 Lot Standard (เช่น 100 สำหรับ XAUUSD)",
+        min_value=0.01,
+        value=st.session_state.asset_fibo_multiplier,
+        step=1.0,
+        format="%.2f",
+        help="สำหรับ XAUUSD (ทองคำ), โดยทั่วไปคือ 100 (เพราะ 1 Lot Standard = 100 ออนซ์, 1 USD price move = 100 USD risk)"
+    )
+
     st.sidebar.markdown("**ระดับ Fibo ที่ต้องการเข้าเทรด**")
     fibo_options = [0.114, 0.25, 0.382, 0.5, 0.618]
     cols_cb = st.sidebar.columns(len(fibo_options))
@@ -78,6 +90,16 @@ elif mode == "CUSTOM":
     st.session_state.asset_custom = col1.text_input("ชื่อสินทรัพย์", value=st.session_state.asset_custom)
     st.session_state.risk_pct_custom = col2.number_input("Risk % (รวมทุกไม้)", min_value=0.01, value=st.session_state.risk_pct_custom, step=0.1, format="%.2f")
     st.session_state.n_entry_custom = st.sidebar.number_input("จำนวนไม้", min_value=1, max_value=10, value=st.session_state.n_entry_custom, step=1)
+
+    # NEW: Multiplier input for CUSTOM mode
+    st.session_state.asset_custom_multiplier = st.sidebar.number_input(
+        "มูลค่า 1 USD Price Move ต่อ 1 Lot Standard (เช่น 100 สำหรับ XAUUSD)",
+        min_value=0.01,
+        value=st.session_state.asset_custom_multiplier,
+        step=1.0,
+        format="%.2f",
+        help="สำหรับ XAUUSD (ทองคำ), โดยทั่วไปคือ 100 (เพราะ 1 Lot Standard = 100 ออนซ์, 1 USD price move = 100 USD risk)"
+    )
 
     for i in range(st.session_state.n_entry_custom):
         st.sidebar.markdown(f"--- ไม้ที่ {i+1} ---")
@@ -111,6 +133,8 @@ if mode == "FIBO":
         direction = st.session_state.direction_fibo
         flags = st.session_state.fibo_flags
         num_selected_entries = sum(flags)
+        # Get multiplier for lot calculation
+        asset_multiplier = st.session_state.asset_fibo_multiplier
 
         if not high_str or not low_str or num_selected_entries == 0:
             st.sidebar.info("กรอก High/Low และเลือก Fibo Level เพื่อคำนวณ")
@@ -139,15 +163,26 @@ if mode == "FIBO":
                             sl = high
                             tp1 = high - (trade_range * RATIO_TP1_EFF)
 
-                        stop_dist = abs(entry - sl)
+                        stop_dist_usd = abs(entry - sl) # ระยะห่าง Stop Loss เป็นหน่วย USD Price Move
+                        
                         lot, risk, rr, profit = 0.0, 0.0, 0.0, 0.0
-                        if stop_dist > 1e-9:
-                            lot = risk_per_entry / stop_dist
-                            risk = lot * stop_dist
-                            target_dist = abs(tp1 - entry)
-                            rr = target_dist / stop_dist
-                            profit = lot * target_dist
-                            rr_list.append(rr)
+                        if stop_dist_usd > 1e-9 and asset_multiplier > 0: # ตรวจสอบ asset_multiplier ด้วย
+                            # คำนวณ Lot ใหม่: Risk($) / (Stop Loss Distance(USD) * มูลค่า 1 USD Price Move ต่อ 1 Lot)
+                            lot = risk_per_entry / (stop_dist_usd * asset_multiplier)
+                            risk = lot * stop_dist_usd * asset_multiplier # Risk คำนวณตาม Lot ที่ได้
+                            target_dist_usd = abs(tp1 - entry)
+                            
+                            # ตรวจสอบทิศทางของ TP เพื่อคำนวณ RR และ Profit ที่มีกำไรเท่านั้น
+                            is_long = direction == "Long"
+                            is_tp_profitable = (is_long and tp1 > entry) or (not is_long and tp1 < entry)
+
+                            if is_tp_profitable:
+                                rr = target_dist_usd / stop_dist_usd
+                                profit = lot * target_dist_usd * asset_multiplier
+                                rr_list.append(rr)
+                            else:
+                                rr = 0.0 # ถ้า TP ไม่ทำกำไร RR เป็น 0
+                                profit = 0.0
 
                         total_lots += lot
                         total_risk_dollar += risk
@@ -172,6 +207,8 @@ elif mode == "CUSTOM":
         total_risk_allowed = account_balance * (risk_pct / 100.0)
         risk_per_entry = total_risk_allowed / num_entries if num_entries > 0 else 0
         rr_list = []
+        # Get multiplier for lot calculation
+        asset_multiplier = st.session_state.asset_custom_multiplier
 
         for i in range(num_entries):
             entry_str = st.session_state[f"custom_entry_{i}"]
@@ -179,22 +216,26 @@ elif mode == "CUSTOM":
             tp_str = st.session_state[f"custom_tp_{i}"]
             
             entry, sl, tp = float(entry_str), float(sl_str), float(tp_str)
-            stop_dist = abs(entry - sl)
+            stop_dist_usd = abs(entry - sl) # ระยะห่าง Stop Loss เป็นหน่วย USD Price Move
             
             lot, risk, rr, profit = 0.0, 0.0, 0.0, 0.0
-            if stop_dist > 1e-9:
-                lot = risk_per_entry / stop_dist
-                risk = lot * stop_dist
-                target_dist = abs(tp - entry)
+            if stop_dist_usd > 1e-9 and asset_multiplier > 0: # ตรวจสอบ asset_multiplier ด้วย
+                # คำนวณ Lot ใหม่: Risk($) / (Stop Loss Distance(USD) * มูลค่า 1 USD Price Move ต่อ 1 Lot)
+                lot = risk_per_entry / (stop_dist_usd * asset_multiplier)
+                risk = lot * stop_dist_usd * asset_multiplier # Risk คำนวณตาม Lot ที่ได้
+                target_dist_usd = abs(tp - entry)
                 
                 # Check for profitable direction before calculating RR
-                is_long = entry > sl
+                is_long = entry > sl # กำหนดทิศทางจาก Entry > SL (Long) หรือ Entry < SL (Short)
                 is_tp_profitable = (is_long and tp > entry) or (not is_long and tp < entry)
                 
                 if is_tp_profitable:
-                    rr = target_dist / stop_dist
-                    profit = lot * target_dist
+                    rr = target_dist_usd / stop_dist_usd
+                    profit = lot * target_dist_usd * asset_multiplier
                     rr_list.append(rr)
+                else:
+                    rr = 0.0 # ถ้า TP ไม่ทำกำไร RR เป็น 0
+                    profit = 0.0
 
             total_lots += lot
             total_risk_dollar += risk
