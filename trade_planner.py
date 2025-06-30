@@ -33,6 +33,9 @@ if "asset_custom" not in st.session_state: st.session_state.asset_custom = "XAUU
 if "risk_pct_custom" not in st.session_state: st.session_state.risk_pct_custom = 1.0
 if "n_entry_custom" not in st.session_state: st.session_state.n_entry_custom = 2
 if "asset_custom_multiplier" not in st.session_state: st.session_state.asset_custom_multiplier = 100.0 # New multiplier for XAUUSD
+# เพิ่มตัวแปรสำหรับ Lot Display Multiplier ใน session_state
+if "display_lot_multiplier" not in st.session_state: st.session_state.display_lot_multiplier = 1.0 # ค่าเริ่มต้นเป็น 1 (แสดงเป็น Standard Lot)
+
 for i in range(st.session_state.get("n_entry_custom", 2)):
     if f"custom_entry_{i}" not in st.session_state: st.session_state[f"custom_entry_{i}"] = "0.00"
     if f"custom_sl_{i}" not in st.session_state: st.session_state[f"custom_sl_{i}"] = "0.00"
@@ -56,6 +59,21 @@ account_balance = st.sidebar.number_input(
 mode = st.sidebar.radio("เลือกโหมดการเทรด", ["FIBO", "CUSTOM"], horizontal=True, key="trade_mode")
 st.sidebar.markdown("---")
 
+# --- ตัวคูณ Lot สำหรับการแสดงผล (NEW INPUT) ---
+st.session_state.display_lot_multiplier = st.sidebar.number_input(
+    "ตัวคูณ Lot สำหรับการแสดงผล (Lot Display Multiplier)",
+    min_value=0.01,
+    value=st.session_state.display_lot_multiplier,
+    step=1.0,
+    format="%.2f",
+    help="""
+    หากโบรกเกอร์ของคุณแสดง 0.01 Lot Standard เป็น '1' หน่วย (Micro Lot)
+    ให้ป้อน 100.00 ที่นี่ (Lot ที่คำนวณได้จะถูกคูณด้วย 100 เพื่อแสดงผล)
+    หากโบรกเกอร์แสดงเป็น 0.01, 0.1, 1.0 ตามปกติ ให้ป้อน 1.00
+    """
+)
+st.sidebar.markdown("---")
+
 # --- Input Forms based on Mode ---
 if mode == "FIBO":
     st.sidebar.subheader("คำนวณจาก Fibo")
@@ -68,7 +86,7 @@ if mode == "FIBO":
     st.session_state.swing_high_fibo = col4.text_input("Swing High", value=st.session_state.swing_high_fibo)
     st.session_state.swing_low_fibo = col5.text_input("Swing Low", value=st.session_state.swing_low_fibo)
 
-    # NEW: Multiplier input for FIBO mode
+    # Multiplier input for FIBO mode
     st.session_state.asset_fibo_multiplier = st.sidebar.number_input(
         "มูลค่า 1 USD Price Move ต่อ 1 Lot Standard (เช่น 100 สำหรับ XAUUSD)",
         min_value=0.01,
@@ -91,7 +109,7 @@ elif mode == "CUSTOM":
     st.session_state.risk_pct_custom = col2.number_input("Risk % (รวมทุกไม้)", min_value=0.01, value=st.session_state.risk_pct_custom, step=0.1, format="%.2f")
     st.session_state.n_entry_custom = st.sidebar.number_input("จำนวนไม้", min_value=1, max_value=10, value=st.session_state.n_entry_custom, step=1)
 
-    # NEW: Multiplier input for CUSTOM mode
+    # Multiplier input for CUSTOM mode
     st.session_state.asset_custom_multiplier = st.sidebar.number_input(
         "มูลค่า 1 USD Price Move ต่อ 1 Lot Standard (เช่น 100 สำหรับ XAUUSD)",
         min_value=0.01,
@@ -135,6 +153,7 @@ if mode == "FIBO":
         num_selected_entries = sum(flags)
         # Get multiplier for lot calculation
         asset_multiplier = st.session_state.asset_fibo_multiplier
+        display_lot_multiplier_val = st.session_state.display_lot_multiplier # ดึงค่าตัวคูณสำหรับการแสดงผล
 
         if not high_str or not low_str or num_selected_entries == 0:
             st.sidebar.info("กรอก High/Low และเลือก Fibo Level เพื่อคำนวณ")
@@ -167,8 +186,12 @@ if mode == "FIBO":
                         
                         lot, risk, rr, profit = 0.0, 0.0, 0.0, 0.0
                         if stop_dist_usd > 1e-9 and asset_multiplier > 0: # ตรวจสอบ asset_multiplier ด้วย
-                            # คำนวณ Lot ใหม่: Risk($) / (Stop Loss Distance(USD) * มูลค่า 1 USD Price Move ต่อ 1 Lot)
+                            # คำนวณ Lot ใหม่: Risk($) / (Stop Loss Distance(USD) * มูลค่า 1 USD Price Move ต่อ 1 Lot Standard)
                             lot = risk_per_entry / (stop_dist_usd * asset_multiplier)
+                            
+                            # เตรียม Lot สำหรับการแสดงผล (ใช้ตัวคูณ Lot Display)
+                            display_lot = lot * display_lot_multiplier_val
+
                             risk = lot * stop_dist_usd * asset_multiplier # Risk คำนวณตาม Lot ที่ได้
                             target_dist_usd = abs(tp1 - entry)
                             
@@ -184,12 +207,13 @@ if mode == "FIBO":
                                 rr = 0.0 # ถ้า TP ไม่ทำกำไร RR เป็น 0
                                 profit = 0.0
 
-                        total_lots += lot
+                        total_lots += lot # total_lots ยังคงเป็น Standard Lot
                         total_risk_dollar += risk
                         total_profit_at_tp += profit
                         calculated_plan_data.append({
                             "Fibo Level": f"{fibo_ratio:.3f}", "Entry": entry, "SL": sl, "TP (Global TP1)": tp1,
-                            "Lot": lot, "Risk $": risk, "RR": rr
+                            "Lot": display_lot, # ใช้ display_lot ในการแสดงผล
+                            "Risk $": risk, "RR": rr
                         })
                 if rr_list:
                     avg_rr = np.mean(rr_list)
@@ -209,6 +233,7 @@ elif mode == "CUSTOM":
         rr_list = []
         # Get multiplier for lot calculation
         asset_multiplier = st.session_state.asset_custom_multiplier
+        display_lot_multiplier_val = st.session_state.display_lot_multiplier # ดึงค่าตัวคูณสำหรับการแสดงผล
 
         for i in range(num_entries):
             entry_str = st.session_state[f"custom_entry_{i}"]
@@ -220,8 +245,12 @@ elif mode == "CUSTOM":
             
             lot, risk, rr, profit = 0.0, 0.0, 0.0, 0.0
             if stop_dist_usd > 1e-9 and asset_multiplier > 0: # ตรวจสอบ asset_multiplier ด้วย
-                # คำนวณ Lot ใหม่: Risk($) / (Stop Loss Distance(USD) * มูลค่า 1 USD Price Move ต่อ 1 Lot)
+                # คำนวณ Lot ใหม่: Risk($) / (Stop Loss Distance(USD) * มูลค่า 1 USD Price Move ต่อ 1 Lot Standard)
                 lot = risk_per_entry / (stop_dist_usd * asset_multiplier)
+                
+                # เตรียม Lot สำหรับการแสดงผล (ใช้ตัวคูณ Lot Display)
+                display_lot = lot * display_lot_multiplier_val
+
                 risk = lot * stop_dist_usd * asset_multiplier # Risk คำนวณตาม Lot ที่ได้
                 target_dist_usd = abs(tp - entry)
                 
@@ -237,12 +266,13 @@ elif mode == "CUSTOM":
                     rr = 0.0 # ถ้า TP ไม่ทำกำไร RR เป็น 0
                     profit = 0.0
 
-            total_lots += lot
+            total_lots += lot # total_lots ยังคงเป็น Standard Lot
             total_risk_dollar += risk
             total_profit_at_tp += profit
             calculated_plan_data.append({
                 "ไม้ที่": i + 1, "Entry": entry, "SL": sl, "TP": tp,
-                "Lot": lot, "Risk $": risk, "RR": rr
+                "Lot": display_lot, # ใช้ display_lot ในการแสดงผล
+                "Risk $": risk, "RR": rr
             })
         if rr_list:
             avg_rr = np.mean(rr_list)
@@ -254,7 +284,8 @@ elif mode == "CUSTOM":
 
 # --- Display Summary in Sidebar ---
 if total_risk_dollar > 0:
-    st.sidebar.write(f"**Total Lots:** {total_lots:.2f}")
+    # แสดง Total Lots เป็น Standard Lot (ไม่ได้คูณด้วย display_lot_multiplier)
+    st.sidebar.write(f"**Total Lots (Standard Lot):** {total_lots:.2f}")
     st.sidebar.write(f"**Total Risk $ (คำนวณ):** {total_risk_dollar:.2f}")
     st.sidebar.write(f"**Average RR:** {avg_rr:.2f}")
     st.sidebar.write(f"**Total Expected Profit:** {total_profit_at_tp:,.2f} USD")
