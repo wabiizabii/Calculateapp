@@ -100,7 +100,7 @@ if mode == "FIBO":
     fibo_options = [0.114, 0.25, 0.382, 0.5, 0.618]
     cols_cb = st.sidebar.columns(len(fibo_options))
     for i, col in enumerate(cols_cb):
-        st.session_state.fibo_flags[i] = col.checkbox(f"{fibo_options[i]:.3f}", value=st.session_state.fibo_flags[i], key=f"fibo_cb_{i}")
+        st.session_state.fibo_flags[i] = col.checkbox(f"{fibo_options[i]:.2f}", value=st.session_state.fibo_flags[i], key=f"fibo_cb_{i}")
 
 elif mode == "CUSTOM":
     st.sidebar.subheader("กำหนดค่าเอง (Custom)")
@@ -211,7 +211,7 @@ if mode == "FIBO":
                         total_risk_dollar += risk
                         total_profit_at_tp += profit
                         calculated_plan_data.append({
-                            "Fibo Level": f"{fibo_ratio:.3f}", "Entry": entry, "SL": sl, "TP (Global TP1)": tp1,
+                            "Fibo Level": f"{fibo_ratio:.2f}", "Entry": entry, "SL": sl, "TP (Global TP1)": tp1,
                             "Lot": display_lot, # ใช้ display_lot ในการแสดงผล
                             "Risk $": risk, "RR": rr
                         })
@@ -327,7 +327,7 @@ with st.expander("📋 ตารางแผนการเทรด (Entry Tabl
                         tp3 = high - (trade_range * RATIO_TP3_EFF)
 
                     tp_df = pd.DataFrame({
-                        "TP Zone": [f"TP1 ({RATIO_TP1_EFF:.3f})", f"TP2 ({RATIO_TP2_EFF:.3f})", f"TP3 ({RATIO_TP3_EFF:.3f})"],
+                        "TP Zone": [f"TP1 ({RATIO_TP1_EFF:.2f})", f"TP2 ({RATIO_TP2_EFF:.2f})", f"TP3 ({RATIO_TP3_EFF:.2f})"],
                         "Price": [f"{tp1:.5f}", f"{tp2:.5f}", f"{tp3:.5f}"]
                     })
                     st.dataframe(tp_df, hide_index=True, use_container_width=True)
