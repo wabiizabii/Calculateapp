@@ -1,6 +1,6 @@
 # ==============================================================================
 #                      TOPSTEP FUTURES TRADE PLANNER
-#                      เวอร์ชัน Minimalist (คำนวณเพียวๆ)
+#                      เวอร์ชัน Minimalist + Interactive Slider
 # ==============================================================================
 
 # ============================== 1. IMPORTS ====================================
@@ -10,7 +10,7 @@ from decimal import Decimal, InvalidOperation
 # ============================== 2. PAGE CONFIGURATION =========================
 st.set_page_config(
     page_title="Futures Trade Planner",
-    layout="centered", # เปลี่ยนเป็น centered เพื่อให้ดูกระชับขึ้น
+    layout="wide",
     initial_sidebar_state="collapsed"
 )
 
@@ -40,8 +40,9 @@ def get_micro_version(symbol):
 st.title("⚙️ Futures Trade Planner")
 st.markdown("เครื่องมือคำนวณ Position Size และเป้าหมายกำไร (RR)")
 
+# --- ส่วน Input ทั้งหมด ---
 with st.container(border=True):
-    st.markdown("**1. กรอกแผนการเทรดของคุณ (Idea)**")
+    st.markdown("**กรอกแผนการเทรดของคุณ (Idea)**")
     
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -59,7 +60,7 @@ with st.container(border=True):
     with col5:
         sl_price_str = st.text_input("ราคาหยุดขาดทุน (SL Price)", placeholder="เช่น 2345.50")
 
-# --- คำนวณและแสดงผล ---
+# --- ส่วนคำนวณและแสดงผล ---
 if entry_price_str and sl_price_str and symbol:
     try:
         entry_price = Decimal(entry_price_str)
@@ -72,53 +73,69 @@ if entry_price_str and sl_price_str and symbol:
             price_diff_sl = abs(entry_price - sl_price)
             sl_ticks = int(price_diff_sl / tick_size)
             
-            st.info(f"**ระยะ SL ที่คำนวณได้:** `{sl_ticks} Ticks`")
-            
             standard_tick_value = FUTURES_TICK_VALUES.get(symbol, 0)
             risk_per_standard = sl_ticks * standard_tick_value
             
             micro_symbol = get_micro_version(symbol)
             micro_tick_value = FUTURES_TICK_VALUES.get(micro_symbol, 0) if micro_symbol else 0
             risk_per_micro = sl_ticks * micro_tick_value if micro_tick_value > 0 else 0
-            
-            st.markdown("#### ✅ คำแนะนำ Position Size:")
-            
-            # สมมติ Max Contracts สำหรับการคำนวณทั่วไป (สามารถปรับได้)
-            contracts_allowed_by_plan_std = 5 
-            contracts_allowed_by_plan_micro = 50
 
-            if risk_per_standard > 0 and risk_per_standard <= risk_usd:
-                allowed = int(risk_usd / risk_per_standard)
-                final = min(allowed, contracts_allowed_by_plan_std)
-                st.success(f"**คำแนะนำ:** คุณสามารถเทรด **{symbol} (Standard)** ได้ **{final} Contract(s)** (ความเสี่ยง ~${final * risk_per_standard:,.2f})")
-            elif micro_symbol and risk_per_micro > 0 and risk_per_micro <= risk_usd:
-                allowed = int(risk_usd / risk_per_micro)
-                final = min(allowed, contracts_allowed_by_plan_micro)
-                st.warning(f"**คำแนะนำ:** Setup นี้ไม่เหมาะกับ Standard แต่เทรด **{micro_symbol} (Micro)** ได้ **{final} Contract(s)** (ความเสี่ยง ~${final * risk_per_micro:,.2f})")
-            else:
-                st.error(f"**คำแนะนำ:** Setup นี้มีความเสี่ยงสูงเกินไปสำหรับงบประมาณ (${risk_usd:,.2f}) ของคุณ")
-
-            st.markdown("#### 🎯 ตารางเป้าหมายกำไร (Potential Targets):")
+            # --- Logic การคำนวณขนาดที่แนะนำ ---
+            recommended_contracts = 0
+            contract_type = "N/A"
             
-            rr_levels = [1, 2, 3, 4, 5, 6, 7]
-            target_data = []
+            if risk_per_micro > 0 and risk_per_micro <= risk_usd:
+                contract_type = "Micro"
+                recommended_contracts = int(risk_usd / risk_per_micro)
+            elif risk_per_standard > 0 and risk_per_standard <= risk_usd:
+                contract_type = "Standard"
+                recommended_contracts = int(risk_usd / risk_per_standard)
             
-            for rr in rr_levels:
-                tp_ticks = sl_ticks * rr
-                price_diff_tp = Decimal(tp_ticks) * tick_size
-                tp_price = entry_price + price_diff_tp if direction == "Long" else entry_price - price_diff_tp
+            # --- ส่วนแสดงผลที่ 2: ปรับขนาดและวางแผน ---
+            st.divider()
+            with st.container(border=True):
+                st.subheader("ปรับขนาดและวางแผน (Sizing & Planning)")
+                st.markdown(f"**ระยะ SL ที่คำนวณได้:** `{sl_ticks} Ticks`")
                 
-                profit_standard = tp_ticks * standard_tick_value
-                profit_micro = tp_ticks * micro_tick_value if micro_tick_value > 0 else None
+                # สมมติ Max Contracts สำหรับการคำนวณทั่วไป
+                contracts_allowed_by_plan_std = 5
+                contracts_allowed_by_plan_micro = 50
 
-                target_data.append({
-                    "RR": f"1:{rr}",
-                    "TP Price": f"{tp_price:.{sl_price.as_tuple().exponent*(-1)}f}",
-                    "Profit / 1 Std Contract": f"${profit_standard:,.2f}",
-                    "Profit / 1 Micro Contract": f"${profit_micro:,.2f}" if profit_micro is not None else "N/A"
-                })
-            
-            st.dataframe(target_data, hide_index=True, use_container_width=True)
+                if contract_type == "Micro":
+                    final_contracts = st.slider(f"ปรับจำนวน Contracts ({micro_symbol})", min_value=1, max_value=contracts_allowed_by_plan_micro, value=recommended_contracts, step=1)
+                    total_risk_now = final_contracts * risk_per_micro
+                elif contract_type == "Standard":
+                    final_contracts = st.slider(f"ปรับจำนวน Contracts ({symbol})", min_value=1, max_value=contracts_allowed_by_plan_std, value=recommended_contracts, step=1)
+                    total_risk_now = final_contracts * risk_per_standard
+                else:
+                    st.error("Setup นี้มีความเสี่ยงสูงเกินไปสำหรับงบประมาณของคุณ แม้จะใช้ 1 Micro Contract ก็ตาม")
+                    final_contracts = 0
+                    total_risk_now = 0
+
+                if final_contracts > 0:
+                    st.success(f"**แผนปัจจุบัน:** เข้า **{final_contracts} {contract_type} Contracts** | **ความเสี่ยงรวม:** **${total_risk_now:,.2f}**")
+                    
+                    st.markdown("#### 🎯 ตารางเป้าหมายกำไร (Potential Targets):")
+                    rr_levels = [1, 2, 3, 4, 5, 6, 7]
+                    target_data = []
+                    
+                    for rr in rr_levels:
+                        tp_ticks = sl_ticks * rr
+                        price_diff_tp = Decimal(tp_ticks) * tick_size
+                        tp_price = entry_price + price_diff_tp if direction == "Long" else entry_price - price_diff_tp
+                        
+                        if contract_type == "Micro":
+                            total_profit_now = final_contracts * (tp_ticks * micro_tick_value)
+                        else: # Standard
+                            total_profit_now = final_contracts * (tp_ticks * standard_tick_value)
+
+                        target_data.append({
+                            "RR": f"1:{rr}",
+                            "TP Price": f"{tp_price:.{sl_price.as_tuple().exponent*(-1)}f}",
+                            "Potential Profit": f"${total_profit_now:,.2f}"
+                        })
+                    
+                    st.dataframe(target_data, hide_index=True, use_container_width=True)
 
     except (InvalidOperation, TypeError):
         st.warning("กรุณากรอกราคาเข้าและราคา SL ให้ถูกต้อง")
