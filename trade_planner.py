@@ -1,7 +1,7 @@
 # ==============================================================================
 #                      TOPSTEP FUTURES TRADE PLANNER
 #                      เวอร์ชันไฟล์เดียวจบ (Single-File Version)
-#                      แทนที่ Trade Planner เดิม
+#                      *** แก้ไข: เอาส่วนสรุปสถานะออก ***
 # ==============================================================================
 
 # ============================== 1. IMPORTS ====================================
@@ -65,22 +65,23 @@ st.title("🔵 Topstep Futures Planner & Calculator")
 st.markdown("เครื่องมือช่วยวางแผนและบริหารความเสี่ยงสำหรับ Topstep Trading Combine")
 st.divider()
 
-# --- ส่วนแสดงสถานะและกฎ ---
-with st.container(border=True):
-    st.subheader("สถานะและกฎของคุณ")
-    PROFIT_TARGET = 3000.0
-    MAX_LOSS_LIMIT = 2000.0
-    STARTING_BALANCE = 50000.0
+# --- START: ส่วนที่จะถูกลบออก ---
+# with st.container(border=True):
+#     st.subheader("สถานะและกฎของคุณ")
+#     PROFIT_TARGET = 3000.0
+#     MAX_LOSS_LIMIT = 2000.0
+#     STARTING_BALANCE = 50000.0
     
-    trailing_stopout_level = max(highest_equity - MAX_LOSS_LIMIT, STARTING_BALANCE)
-    cushion = current_equity - trailing_stopout_level
+#     trailing_stopout_level = max(highest_equity - MAX_LOSS_LIMIT, STARTING_BALANCE)
+#     cushion = current_equity - trailing_stopout_level
     
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric(label="🎯 เป้าหมายกำไร (Profit Target)", value=f"${PROFIT_TARGET:,.0f}")
-        st.metric(label="ระยะปลอดภัย (Cushion)", value=f"${cushion:,.2f}")
-    with col2:
-        st.warning(f"**กฎที่อันตรายที่สุด (Trailing Drawdown):**\n\nจุดสอบตกของคุณตอนนี้คือ **${trailing_stopout_level:,.2f}**")
+#     col1, col2 = st.columns(2)
+#     with col1:
+#         st.metric(label="🎯 เป้าหมายกำไร (Profit Target)", value=f"${PROFIT_TARGET:,.0f}")
+#         st.metric(label="ระยะปลอดภัย (Cushion)", value=f"${cushion:,.2f}")
+#     with col2:
+#         st.warning(f"**กฎที่อันตรายที่สุด (Trailing Drawdown):**\n\nจุดสอบตกของคุณตอนนี้คือ **${trailing_stopout_level:,.2f}**")
+# --- END: ส่วนที่จะถูกลบออก ---
 
 # --- ส่วนคำนวณและวางแผน ---
 if entry_price_str and sl_price_str and symbol:
@@ -103,19 +104,18 @@ if entry_price_str and sl_price_str and symbol:
             risk_per_micro = sl_ticks * micro_tick_value if micro_tick_value > 0 else 0
 
             daily_loss_limit = 1000.0
-            recommended_risk_usd = daily_loss_limit * 0.25 # กฎ 25% DDL
+            recommended_risk_usd = daily_loss_limit * 0.25
             
             recommended_contracts = 0
             contract_type = "N/A"
             
             if risk_per_micro > 0 and risk_per_micro <= recommended_risk_usd:
                 contract_type = "Micro"
-                recommended_contracts = int(recommended_risk_usd / risk_per_micro)
+                recommended_contracts = int(recommended_risk_usd / recommended_risk_usd)
             elif risk_per_standard > 0 and risk_per_standard <= recommended_risk_usd:
                 contract_type = "Standard"
                 recommended_contracts = int(recommended_risk_usd / risk_per_standard)
             
-            st.divider()
             with st.container(border=True):
                 st.subheader("ปรับขนาดและวางแผน (Sizing & Planning)")
                 st.markdown(f"**ระยะ SL ที่คำนวณได้:** `{sl_ticks} Ticks`")
