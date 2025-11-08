@@ -1,6 +1,6 @@
 # ==============================================================================
-#                      THE FINAL INTELLIGENT TRADE PLANNER
-#                      เวอร์ชันคำนวณความเสี่ยงอัตโนมัติ (ตามที่คุณต้องการ)
+#                      THE UNIVERSAL TOPSTEP TRADE PLANNER
+#                      เวอร์ชันรองรับทุกขนาดบัญชี (50k, 100k, 150k)
 # ==============================================================================
 
 # ============================== 1. IMPORTS ====================================
@@ -9,12 +9,38 @@ from decimal import Decimal, InvalidOperation
 
 # ============================== 2. PAGE CONFIGURATION =========================
 st.set_page_config(
-    page_title="Intelligent Futures Planner",
+    page_title="Universal Futures Planner",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
 # ============================== 3. DATA DEFINITIONS ===========================
+# --- START: ฐานข้อมูลกฎของแต่ละขนาดบัญชี ---
+ACCOUNT_RULES = {
+    "50K Buying Power": {
+        "start_balance": 50000.0,
+        "profit_target": 3000.0,
+        "max_loss_limit": 2000.0,
+        "daily_loss_limit": 1000.0, # ค่ามาตรฐานของ Topstep
+        "max_contracts": 5
+    },
+    "100K Buying Power": {
+        "start_balance": 100000.0,
+        "profit_target": 6000.0,
+        "max_loss_limit": 3000.0,
+        "daily_loss_limit": 2000.0, # ค่ามาตรฐานของ Topstep
+        "max_contracts": 10
+    },
+    "150K Buying Power": {
+        "start_balance": 150000.0,
+        "profit_target": 9000.0,
+        "max_loss_limit": 4500.0,
+        "daily_loss_limit": 3000.0, # ค่ามาตรฐานของ Topstep
+        "max_contracts": 15
+    }
+}
+# --- END: ฐานข้อมูลกฎ ---
+
 FUTURES_TICK_VALUES = {
     "ES": 12.50, "MES": 1.25, "NQ": 5.00, "MNQ": 0.50, "YM": 5.00, "MYM": 0.50,
     "RTY": 5.00, "M2K": 0.50, "CL": 10.00, "MCL": 1.00, "GC": 10.00, "MGC": 1.00,
@@ -37,13 +63,25 @@ def get_micro_version(symbol):
     return None
 
 # ============================== 5. MAIN APPLICATION ===========================
-st.title("⚙️ Intelligent Futures Trade Planner")
+st.title("⚙️ Universal Futures Trade Planner")
+
+# --- START: เพิ่มตัวเลือกขนาดบัญชี ---
+account_selection = st.selectbox(
+    "เลือกขนาดบัญชีของคุณ (Select Your Account Size)",
+    options=list(ACCOUNT_RULES.keys())
+)
+# ดึงกฎของบัญชีที่เลือกมาใช้งาน
+selected_rules = ACCOUNT_RULES[account_selection]
+# --- END: เพิ่มตัวเลือกขนาดบัญชี ---
+
+st.divider()
 
 # --- ส่วน Input ทั้งหมด ---
 with st.container(border=True):
-    st.markdown("#### กรอกแผนการเทรดของคุณ (Idea)")
+    st.markdown(f"#### กรอกแผนการเทรดของคุณสำหรับบัญชี **{account_selection}**")
     
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
+    # (ลบช่องกรอก Risk ออก เพราะจะคำนวณอัตโนมัติ)
     with col1:
         standard_symbols = sorted([s for s in FUTURES_TICK_VALUES.keys() if not s.startswith("M")])
         symbol_index = standard_symbols.index("GC") if "GC" in standard_symbols else 0
@@ -51,10 +89,10 @@ with st.container(border=True):
     with col2:
         direction = st.radio("ทิศทาง", ["Long", "Short"], horizontal=True)
 
-    col3, col4 = st.columns(2)
-    with col3:
-        entry_price_str = st.text_input("ราคาเข้า (Entry Price)", placeholder="เช่น 2350.50")
+    col4, col5 = st.columns(2)
     with col4:
+        entry_price_str = st.text_input("ราคาเข้า (Entry Price)", placeholder="เช่น 2350.50")
+    with col5:
         sl_price_str = st.text_input("ราคาหยุดขาดทุน (SL Price)", placeholder="เช่น 2345.50")
 
 # --- ส่วนคำนวณและแสดงผล ---
@@ -70,13 +108,13 @@ if entry_price_str and sl_price_str and symbol:
             price_diff_sl = abs(entry_price - sl_price)
             sl_ticks = int(price_diff_sl / tick_size)
             
-            # --- START: โค้ดที่อัปเกรดใหม่ทั้งหมด ---
+            # --- START: ทำให้การคำนวณทั้งหมดเป็นไดนามิก ---
             
-            # 1. คำนวณความเสี่ยงที่แนะนำโดยอัตโนมัติ
-            daily_loss_limit = 1000.0 # ค่ามาตรฐาน DDL สำหรับบัญชี $50k
+            # 1. คำนวณความเสี่ยงที่แนะนำโดยอัตโนมัติ (จากกฎที่เลือก)
+            daily_loss_limit = selected_rules['daily_loss_limit']
             recommended_risk_usd = daily_loss_limit * 0.25 # กฎ 25% (Safe Mode)
             
-            st.info(f"**ความเสี่ยงที่แนะนำ (Recommended Risk):** `${recommended_risk_usd:,.2f}` (คำนวณจาก 25% ของ Daily Loss Limit)")
+            st.info(f"**ความเสี่ยงที่แนะนำ (Recommended Risk):** `${recommended_risk_usd:,.2f}` (คำนวณจาก 25% ของ Daily Loss Limit: ${daily_loss_limit:,.0f})")
 
             # 2. คำนวณความเสี่ยงพื้นฐาน
             standard_tick_value = FUTURES_TICK_VALUES.get(symbol, 0)
@@ -99,7 +137,7 @@ if entry_price_str and sl_price_str and symbol:
             
             st.divider()
 
-            # 4. แสดงผลและ Slider
+            # 4. แสดงผลและ Slider (โดยใช้ Max Contracts จากกฎที่เลือก)
             with st.container(border=True):
                 st.subheader("ผลการวิเคราะห์และวางแผน")
                 st.markdown(f"**ระยะ SL ที่คำนวณได้:** `{sl_ticks} Ticks`")
@@ -108,10 +146,12 @@ if entry_price_str and sl_price_str and symbol:
                 total_risk_now = 0.0
 
                 if contract_type == "Micro":
-                    final_contracts = st.slider(f"ปรับจำนวน Contracts ({micro_symbol})", min_value=1, max_value=50, value=recommended_contracts, step=1)
+                    max_micro_contracts = selected_rules['max_contracts'] * 10
+                    final_contracts = st.slider(f"ปรับจำนวน Contracts ({micro_symbol})", min_value=1, max_value=max_micro_contracts, value=recommended_contracts, step=1)
                     total_risk_now = final_contracts * risk_per_micro
                 elif contract_type == "Standard":
-                    final_contracts = st.slider(f"ปรับจำนวน Contracts ({symbol})", min_value=1, max_value=5, value=recommended_contracts, step=1)
+                    max_std_contracts = selected_rules['max_contracts']
+                    final_contracts = st.slider(f"ปรับจำนวน Contracts ({symbol})", min_value=1, max_value=max_std_contracts, value=recommended_contracts, step=1)
                     total_risk_now = final_contracts * risk_per_standard
                 else:
                     st.error(f"Setup นี้มีความเสี่ยงสูงเกินไปสำหรับ 'Recommended Risk' (${recommended_risk_usd:,.2f}) แม้จะใช้ 1 Micro Contract ก็ตาม (เสี่ยง ${risk_per_micro:,.2f})")
@@ -137,7 +177,7 @@ if entry_price_str and sl_price_str and symbol:
                             "Potential Profit": f"${total_profit_now:,.2f}"
                         })
                     st.dataframe(target_data, hide_index=True, use_container_width=True)
-            # --- END: โค้ดที่อัปเกรด ---
+            # --- END: ทำให้การคำนวณทั้งหมดเป็นไดนามิก ---
 
     except (InvalidOperation, TypeError):
         st.warning("กรุณากรอกราคาเข้าและราคา SL ให้ถูกต้อง")
